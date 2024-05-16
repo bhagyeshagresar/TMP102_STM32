@@ -19,7 +19,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include <string.h>
-#include <stdio.h>/* Private includes ----------------------------------------------------------*/
+#include <stdio.h>
+/* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
@@ -43,10 +44,10 @@
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
-static const uint8_t TMP102_ADDR = 0x48 << 1;
-static const uint8_t Temp_REG = 0x00;
-/* USER CODE BEGIN PV */
 
+/* USER CODE BEGIN PV */
+static const uint8_t TMP102_ADDR = 0x48 << 1; // Use 8-bit address
+static const uint8_t REG_TEMP = 0x00;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,15 +71,16 @@ static void MX_I2C1_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  HAL_StatusTypeDef ret;
+  uint8_t buf[12];
+  int16_t val;
+  float temp_c;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-  HAL_StatusTypeDef ret;
-
 
   /* USER CODE BEGIN Init */
 
@@ -95,9 +97,6 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
-  uint8_t buff[12];
-  int16_t val;
-  float temp_c;
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -107,43 +106,44 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  buff[0] = Temp_REG;
-	  ret = HAL_I2C_Master_Transmit(&hi2c1, TMP102_ADDR, buff, 1, HAL_MAX_DELAY);
+	  // Tell TMP102 that we want to read from the temperature register
+	buf[0] = REG_TEMP;
+	ret = HAL_I2C_Master_Transmit(&hi2c1, TMP102_ADDR, buf, 1, HAL_MAX_DELAY);
+	if ( ret != HAL_OK ) {
+	  strcpy((char*)buf, "Error Tx\r\n");
+	} else {
+
+	  // Read 2 bytes from the temperature register
+	  ret = HAL_I2C_Master_Receive(&hi2c1, TMP102_ADDR, buf, 2, HAL_MAX_DELAY);
 	  if ( ret != HAL_OK ) {
-		strcpy((char*)buff, "Error Tx\r\n");
+		strcpy((char*)buf, "Error Rx\r\n");
 	  } else {
 
-		// Read 2 bytes from the temperature register
-		ret = HAL_I2C_Master_Receive(&hi2c1, TMP102_ADDR, buff, 2, HAL_MAX_DELAY);
-		if ( ret != HAL_OK ) {
-		  strcpy((char*)buff, "Error Rx\r\n");
-		} else {
+		//Combine the bytes
+		val = ((int16_t)buf[0] << 4) | (buf[1] >> 4);
 
-		  //Combine the bytes
-		  val = ((int16_t)buff[0] << 4) | (buff[1] >> 4);
-
-		  // Convert to 2's complement, since temperature can be negative
-		  if ( val > 0x7FF ) {
-			val |= 0xF000;
-		  }
-
-		  // Convert to float temperature value (Celsius)
-		  temp_c = val * 0.0625;
-
-		  // Convert temperature to decimal format
-		  temp_c *= 100;
-		  sprintf((char*)buff,
-				"%u.%u C\r\n",
-				((unsigned int)temp_c / 100),
-				((unsigned int)temp_c % 100));
+		// Convert to 2's complement, since temperature can be negative
+		if ( val > 0x7FF ) {
+		  val |= 0xF000;
 		}
+
+		// Convert to float temperature value (Celsius)
+		temp_c = val * 0.0625;
+
+		// Convert temperature to decimal format
+		temp_c *= 100;
+		sprintf((char*)buf,
+			  "%u.%u C\r\n",
+			  ((unsigned int)temp_c / 100),
+			  ((unsigned int)temp_c % 100));
 	  }
+	}
 
-	  // Send out buffer (temperature or error message)
-	  HAL_UART_Transmit(&huart2, buff, strlen((char*)buff), HAL_MAX_DELAY);
+	// Send out buffer (temperature or error message)
+	HAL_UART_Transmit(&huart2, buf, strlen((char*)buf), HAL_MAX_DELAY);
 
-	  // Wait
-	  HAL_Delay(500);
+	// Wait
+	HAL_Delay(500);
 
     /* USER CODE BEGIN 3 */
   }
